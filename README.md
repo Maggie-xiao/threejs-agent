@@ -10,7 +10,7 @@
 | GitLab | 是 | 无 | 公共开源项目 |
 | npm | 是 | 无 | 新增/更新的 three.js 生态包 |
 | three.js Forum | 是 | 无 | 专业社区的一手作品与讨论 |
-| Bluesky | 尽力而为 | 无 | 创作者发布与展示；部分网络环境会返回 403 |
+| Bluesky | 是 | 匿名；403 时配置免费 `BSKY_HANDLE`、`BSKY_APP_PASSWORD` | 创作者发布与展示 |
 | X / Twitter | 否 | `X_BEARER_TOKEN` | 高频创作者动态 |
 | Discord | 否 | `DISCORD_BOT_TOKEN`、`DISCORD_CHANNEL_IDS` | 指定社区频道内容 |
 | DEV Community | 是 | 无 | 教程、作品拆解与代码文章 |
@@ -21,6 +21,8 @@
 | YouTube | 否 | `YOUTUBE_API_KEY` | 视频展示、制作过程与教程 |
 
 Twitter、Discord 和 YouTube 使用官方 API。Discord Bot 必须已加入目标服务器并具有目标频道的读取权限；频道 ID 用逗号分隔。没有配置的来源会被跳过，并记录在 `output/last-run.json`。
+
+Bluesky 默认使用匿名公开 AppView。如果当前网络返回 403，可在 Bluesky 的 Settings → Privacy and security → App passwords 创建专用密码，将账号 handle 和专用密码写入 `.env`。不要使用账号主密码。
 
 ## Run
 

@@ -52,8 +52,17 @@ def search_bluesky(hours=24, session=None):
     results = []
     headers = {"User-Agent": "threejs-good-cases/2.0 (+https://github.com/threejs)",
                "Accept": "application/json"}
+    host = "https://public.api.bsky.app"
+    handle, app_password = os.getenv("BSKY_HANDLE"), os.getenv("BSKY_APP_PASSWORD")
+    if handle and app_password:
+        auth = session.post("https://bsky.social/xrpc/com.atproto.server.createSession",
+                            json={"identifier": handle, "password": app_password}, timeout=(5, 15))
+        auth.raise_for_status()
+        headers["Authorization"] = f"Bearer {auth.json()['accessJwt']}"
+        headers["atproto-proxy"] = "did:web:api.bsky.app#bsky_appview"
+        host = "https://bsky.social"
     for query in ("threejs", '"three.js"', '"react three fiber"'):
-        response = session.get("https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts",
+        response = session.get(f"{host}/xrpc/app.bsky.feed.searchPosts",
                                headers=headers, params={"q": query, "limit": 100, "sort": "latest"}, timeout=(5, 15))
         response.raise_for_status()
         for row in response.json().get("posts", []):

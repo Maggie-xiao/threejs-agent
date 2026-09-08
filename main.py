@@ -64,6 +64,8 @@ def collect(hours):
             print(f"[source] {name}: {len(batch)} items", file=sys.stderr, flush=True)
         except (RequestException, ValueError, KeyError) as exc:
             status[name] = {"ok": False, "error": str(exc)[:240]}
+            if name == "bluesky" and not (os.getenv("BSKY_HANDLE") and os.getenv("BSKY_APP_PASSWORD")):
+                status[name]["hint"] = "public endpoint blocked; set free BSKY_HANDLE and BSKY_APP_PASSWORD"
             print(f"[source] {name}: failed ({type(exc).__name__})", file=sys.stderr, flush=True)
     return items, status
 
