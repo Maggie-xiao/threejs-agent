@@ -6,7 +6,8 @@ from pathlib import Path
 from dotenv import load_dotenv
 from requests import RequestException
 from ai_analyzer import analyze_item, fallback_analysis
-from community_collectors import (search_devto, search_hackernews, search_mastodon,
+from community_collectors import (search_creative_rss, search_devto, search_gitlab,
+                                  search_hackernews, search_mastodon, search_npm,
                                   search_reddit, search_youtube)
 from deduplicator import deduplicate_items
 from filters import filter_by_keywords, filter_recent
@@ -16,9 +17,31 @@ from report import write_reports
 from social_collectors import search_bluesky, search_discord, search_twitter
 
 COLLECTORS = {"github": search_github, "threejs_forum": search_forum,
+              "gitlab": search_gitlab, "npm": search_npm, "creative_rss": search_creative_rss,
               "devto": search_devto, "reddit": search_reddit, "hackernews": search_hackernews,
               "mastodon": search_mastodon, "youtube": search_youtube, "bluesky": search_bluesky,
               "twitter": search_twitter, "discord": search_discord}
+
+
+def select_diverse(candidates, limit, per_source=2):
+    """Keep strong cross-source coverage, then fill remaining slots by score."""
+    selected, selected_ids = [], set()
+    by_source = {}
+    for item in candidates:
+        by_source.setdefault(item.get("source", "unknown"), []).append(item)
+    for items in by_source.values():
+        for item in items[:per_source]:
+            if len(selected) >= limit:
+                break
+            selected.append(item)
+            selected_ids.add(item["id"])
+    for item in candidates:
+        if len(selected) >= limit:
+            break
+        if item["id"] not in selected_ids:
+            selected.append(item)
+            selected_ids.add(item["id"])
+    return selected
 
 
 def collect(hours):
@@ -56,7 +79,7 @@ def run(hours=24, minimum_score=8, max_cases=50, ai_limit=25, include_seen=False
     if not include_seen:
         candidates = [item for item in candidates if item["id"] not in seen]
     candidates.sort(key=lambda item: item.get("heuristic_score", 0), reverse=True)
-    selected = candidates[:max_cases]
+    selected = select_diverse(candidates, max_cases)
     for index, item in enumerate(selected):
         try:
             item["analysis"] = analyze_item(item) if index < ai_limit else fallback_analysis(item)

@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 
 from deduplicator import deduplicate_items
 from filters import filter_by_keywords, filter_recent
+from main import select_diverse
 
 
 class PipelineCoreTests(unittest.TestCase):
@@ -20,6 +21,12 @@ class PipelineCoreTests(unittest.TestCase):
         result = filter_by_keywords([item], minimum_score=20)
         self.assertEqual(len(result), 1)
         self.assertTrue(result[0]["has_code"])
+
+    def test_selection_keeps_source_diversity(self):
+        items = ([{"id": f"g{i}", "source": "github"} for i in range(10)] +
+                 [{"id": "m1", "source": "mastodon"}])
+        selected = select_diverse(items, 3, per_source=1)
+        self.assertEqual({item["source"] for item in selected}, {"github", "mastodon"})
 
 
 if __name__ == "__main__":

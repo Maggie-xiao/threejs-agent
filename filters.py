@@ -14,6 +14,7 @@ NEGATIVE_KEYWORDS = ("for hire", "hiring", "job opening", "looking for work",
 SOURCE_WEIGHTS = {"threejs_forum": 8, "github": 8, "twitter": 5,
                   "discord": 6, "bluesky": 4, "rss": 4, "devto": 5,
                   "reddit": 4, "hackernews": 5, "mastodon": 4, "youtube": 5}
+SOURCE_WEIGHTS.update({"gitlab": 7, "npm": 7, "creative_rss": 7})
 
 
 def parse_time(value):
