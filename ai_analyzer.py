@@ -1,0 +1,36 @@
+import json
+import os
+
+SCHEMA = {"type": "object", "additionalProperties": False, "properties": {
+    "relevant": {"type": "boolean"}, "category": {"type": "string"},
+    "has_code": {"type": "boolean"}, "highlight": {"type": "string"},
+    "reusable_value": {"type": "string"},
+    **{name: {"type": "integer", "minimum": 0, "maximum": 10} for name in
+       ("visual_score", "technical_score", "innovation_score", "recommendation_score")}},
+    "required": ["relevant", "category", "has_code", "highlight", "reusable_value",
+                 "visual_score", "technical_score", "innovation_score", "recommendation_score"]}
+
+
+def fallback_analysis(item):
+    content = (item.get("content") or item.get("title") or "").strip()
+    return {"relevant": True, "category": "待人工复核", "has_code": bool(item.get("has_code")),
+            "highlight": content[:180] or "来源信息有限，建议打开原文查看视觉效果。",
+            "reusable_value": "可从原链接检查实现方式、视觉语言与交互机制。",
+            "visual_score": 0, "technical_score": 0, "innovation_score": 0,
+            "recommendation_score": min(10, max(1, item.get("heuristic_score", 0) // 4))}
+
+
+def analyze_item(item):
+    if not os.getenv("OPENAI_API_KEY"):
+        return fallback_analysis(item)
+    from openai import OpenAI
+    source_data = {key: item.get(key) for key in
+                   ("source", "source_tier", "title", "url", "content", "stars", "likes", "language", "license")}
+    response = OpenAI().responses.create(
+        model=os.getenv("OPENAI_MODEL", "gpt-5.6-luna"), store=False,
+        instructions=("你是 three.js / Creative Web / 3D Art 案例编辑。只根据输入证据评估，不得虚构。"
+                      "highlight 用中文写核心亮点；reusable_value 用中文写具体可借鉴的视觉语言、"
+                      "世界观、交互、游戏化或工程方法。"),
+        input=json.dumps(source_data, ensure_ascii=False),
+        text={"format": {"type": "json_schema", "name": "case_analysis", "strict": True, "schema": SCHEMA}})
+    return json.loads(response.output_text)
