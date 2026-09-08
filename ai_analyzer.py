@@ -1,5 +1,11 @@
 import json
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+
+ENV_PATH = Path(__file__).with_name(".env")
 
 SCHEMA = {"type": "object", "additionalProperties": False, "properties": {
     "relevant": {"type": "boolean"}, "category": {"type": "string"},
@@ -21,6 +27,7 @@ def fallback_analysis(item):
 
 
 def analyze_item(item):
+    load_dotenv(ENV_PATH)
     if not os.getenv("OPENAI_API_KEY"):
         return fallback_analysis(item)
     from openai import OpenAI
@@ -34,3 +41,12 @@ def analyze_item(item):
         input=json.dumps(source_data, ensure_ascii=False),
         text={"format": {"type": "json_schema", "name": "case_analysis", "strict": True, "schema": SCHEMA}})
     return json.loads(response.output_text)
+
+
+if __name__ == "__main__":
+    load_dotenv(ENV_PATH)
+    if not os.getenv("OPENAI_API_KEY"):
+        print(f"未配置 OPENAI_API_KEY。请在 {ENV_PATH} 中添加：OPENAI_API_KEY=你的密钥")
+        print("这不会阻止 main.py 运行；未配置时会自动使用无 AI 降级摘要。")
+    else:
+        print(f"OPENAI_API_KEY 已读取，模型：{os.getenv('OPENAI_MODEL', 'gpt-5.6-luna')}")
