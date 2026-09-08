@@ -15,7 +15,7 @@ def search_github(hours=24, session=None):
     found = {}
     for keyword in QUERIES:
         response = session.get("https://api.github.com/search/repositories", headers=headers,
-            params={"q": f'{keyword} pushed:>={since}', "sort": "updated", "order": "desc", "per_page": 30}, timeout=25)
+            params={"q": f'{keyword} pushed:>={since}', "sort": "updated", "order": "desc", "per_page": 30}, timeout=(5, 15))
         response.raise_for_status()
         for row in response.json().get("items", []):
             url = row["html_url"]

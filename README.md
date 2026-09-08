@@ -11,8 +11,13 @@
 | Bluesky | 尽力而为 | 无 | 创作者发布与展示；部分网络环境会返回 403 |
 | X / Twitter | 否 | `X_BEARER_TOKEN` | 高频创作者动态 |
 | Discord | 否 | `DISCORD_BOT_TOKEN`、`DISCORD_CHANNEL_IDS` | 指定社区频道内容 |
+| DEV Community | 是 | 无 | 教程、作品拆解与代码文章 |
+| Reddit | 是（尽力而为） | 无 | 社区作品、讨论与外链 |
+| Hacker News | 是 | 无 | 技术作品发布与讨论 |
+| Mastodon | 是 | 无 | `#threejs` 创作者动态 |
+| YouTube | 否 | `YOUTUBE_API_KEY` | 视频展示、制作过程与教程 |
 
-Twitter 和 Discord 使用官方 API。Discord Bot 必须已加入目标服务器并具有目标频道的读取权限；频道 ID 用逗号分隔。没有配置的来源会被跳过，并记录在 `output/last-run.json`。
+Twitter、Discord 和 YouTube 使用官方 API。Discord Bot 必须已加入目标服务器并具有目标频道的读取权限；频道 ID 用逗号分隔。没有配置的来源会被跳过，并记录在 `output/last-run.json`。
 
 ## Run
 

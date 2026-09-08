@@ -1,10 +1,13 @@
 import argparse
 import json
 import os
+import sys
 from pathlib import Path
 from dotenv import load_dotenv
 from requests import RequestException
 from ai_analyzer import analyze_item, fallback_analysis
+from community_collectors import (search_devto, search_hackernews, search_mastodon,
+                                  search_reddit, search_youtube)
 from deduplicator import deduplicate_items
 from filters import filter_by_keywords, filter_recent
 from forum_collector import search_forum
@@ -13,7 +16,9 @@ from report import write_reports
 from social_collectors import search_bluesky, search_discord, search_twitter
 
 COLLECTORS = {"github": search_github, "threejs_forum": search_forum,
-              "bluesky": search_bluesky, "twitter": search_twitter, "discord": search_discord}
+              "devto": search_devto, "reddit": search_reddit, "hackernews": search_hackernews,
+              "mastodon": search_mastodon, "youtube": search_youtube, "bluesky": search_bluesky,
+              "twitter": search_twitter, "discord": search_discord}
 
 
 def collect(hours):
@@ -25,12 +30,18 @@ def collect(hours):
         if name == "discord" and not (os.getenv("DISCORD_BOT_TOKEN") and os.getenv("DISCORD_CHANNEL_IDS")):
             status[name] = {"ok": False, "skipped": True, "reason": "missing Discord token or channel IDs"}
             continue
+        if name == "youtube" and not os.getenv("YOUTUBE_API_KEY"):
+            status[name] = {"ok": False, "skipped": True, "reason": "missing YOUTUBE_API_KEY"}
+            continue
         try:
+            print(f"[source] {name}: scanning...", file=sys.stderr, flush=True)
             batch = collector(hours=hours)
             items.extend(batch)
             status[name] = {"ok": True, "count": len(batch)}
+            print(f"[source] {name}: {len(batch)} items", file=sys.stderr, flush=True)
         except (RequestException, ValueError, KeyError) as exc:
             status[name] = {"ok": False, "error": str(exc)[:240]}
+            print(f"[source] {name}: failed ({type(exc).__name__})", file=sys.stderr, flush=True)
     return items, status
 
 

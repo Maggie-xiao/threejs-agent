@@ -13,7 +13,7 @@ def search_twitter(hours=24, session=None):
     session = session or requests.Session()
     start = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds").replace("+00:00", "Z")
     response = session.get("https://api.x.com/2/tweets/search/recent",
-        headers={"Authorization": f"Bearer {token}"}, timeout=25,
+        headers={"Authorization": f"Bearer {token}"}, timeout=(5, 15),
         params={"query": SOCIAL_QUERY, "start_time": start, "max_results": 100,
                 "tweet.fields": "created_at,public_metrics,author_id,entities"})
     response.raise_for_status()
@@ -32,7 +32,7 @@ def search_discord(hours=24, session=None):
     results = []
     for channel in [value.strip() for value in channels.split(",") if value.strip()]:
         response = session.get(f"https://discord.com/api/v10/channels/{channel}/messages",
-                               headers={"Authorization": f"Bot {token}"}, params={"limit": 100}, timeout=25)
+                               headers={"Authorization": f"Bot {token}"}, params={"limit": 100}, timeout=(5, 15))
         response.raise_for_status()
         for row in response.json():
             created = datetime.fromisoformat(row["timestamp"].replace("Z", "+00:00"))
@@ -54,7 +54,7 @@ def search_bluesky(hours=24, session=None):
                "Accept": "application/json"}
     for query in ("threejs", '"three.js"', '"react three fiber"'):
         response = session.get("https://public.api.bsky.app/xrpc/app.bsky.feed.searchPosts",
-                               headers=headers, params={"q": query, "limit": 100, "sort": "latest"}, timeout=25)
+                               headers=headers, params={"q": query, "limit": 100, "sort": "latest"}, timeout=(5, 15))
         response.raise_for_status()
         for row in response.json().get("posts", []):
             record, created = row.get("record", {}), row.get("record", {}).get("createdAt", "")

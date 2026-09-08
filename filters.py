@@ -12,7 +12,8 @@ POSITIVE_KEYWORDS = {
 NEGATIVE_KEYWORDS = ("for hire", "hiring", "job opening", "looking for work",
                      "help me", "beginner question", "error message", "bootcamp")
 SOURCE_WEIGHTS = {"threejs_forum": 8, "github": 8, "twitter": 5,
-                  "discord": 6, "bluesky": 4, "rss": 4}
+                  "discord": 6, "bluesky": 4, "rss": 4, "devto": 5,
+                  "reddit": 4, "hackernews": 5, "mastodon": 4, "youtube": 5}
 
 
 def parse_time(value):
