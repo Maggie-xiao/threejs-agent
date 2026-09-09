@@ -11,28 +11,36 @@ import requests
 def search_gitlab(hours=24, session=None):
     session = session or requests.Session()
     updated_after = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds").replace("+00:00", "Z")
-    found = {}
+    found, warnings = {}, []
     for query in ("three.js", "threejs", "react three fiber"):
-        response = session.get("https://gitlab.com/api/v4/projects", timeout=(5, 15),
-            params={"search": query, "simple": "true", "order_by": "updated_at", "sort": "desc",
-                    "updated_after": updated_after, "per_page": 100})
-        response.raise_for_status()
+        try:
+            response = session.get("https://gitlab.com/api/v4/projects", timeout=(5, 15),
+                params={"search": query, "simple": "true", "order_by": "updated_at", "sort": "desc",
+                        "updated_after": updated_after, "per_page": 100})
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            warnings.append(f"{query}: {exc}")
+            continue
         for row in response.json():
             found[row["web_url"]] = {"source": "gitlab", "source_tier": "open_source",
                 "title": row.get("path_with_namespace") or row["name"], "url": row["web_url"],
                 "content": row.get("description") or "", "published_at": row["last_activity_at"],
                 "stars": row.get("star_count", 0), "language": None}
-    return list(found.values())
+    return list(found.values()), warnings
 
 
 def search_npm(hours=24, session=None):
     session = session or requests.Session()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-    found = {}
+    found, warnings = {}, []
     for query in ("threejs shader", "three.js webgpu", "react-three-fiber"):
-        response = session.get("https://registry.npmjs.org/-/v1/search", timeout=(5, 15),
-                               params={"text": query, "size": 100, "quality": 0.7, "popularity": 0.1, "maintenance": 0.2})
-        response.raise_for_status()
+        try:
+            response = session.get("https://registry.npmjs.org/-/v1/search", timeout=(5, 15),
+                                   params={"text": query, "size": 100, "quality": 0.7, "popularity": 0.1, "maintenance": 0.2})
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            warnings.append(f"{query}: {exc}")
+            continue
         for entry in response.json().get("objects", []):
             row = entry.get("package", {})
             try:
@@ -46,7 +54,7 @@ def search_npm(hours=24, session=None):
                 "url": row.get("links", {}).get("npm", f"https://www.npmjs.com/package/{name}"),
                 "content": row.get("description") or "", "published_at": row["date"],
                 "version": row.get("version"), "license": None}
-    return list(found.values())
+    return list(found.values()), warnings
 
 
 RSS_FEEDS = {
@@ -66,11 +74,15 @@ def _text(node, *names):
 def search_creative_rss(hours=24, session=None):
     session = session or requests.Session()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-    results = []
+    results, warnings = [], []
     for publisher, url in RSS_FEEDS.items():
-        response = session.get(url, headers={"User-Agent": "threejs-good-cases/2.0"}, timeout=(5, 15))
-        response.raise_for_status()
-        root = ET.fromstring(response.content)
+        try:
+            response = session.get(url, headers={"User-Agent": "threejs-good-cases/2.0"}, timeout=(5, 15))
+            response.raise_for_status()
+            root = ET.fromstring(response.content)
+        except (requests.RequestException, ET.ParseError) as exc:
+            warnings.append(f"{publisher}: {exc}")
+            continue
         entries = root.findall(".//item") or root.findall("{http://www.w3.org/2005/Atom}entry")
         for node in entries:
             title = _text(node, "title", "{http://www.w3.org/2005/Atom}title")
@@ -93,7 +105,7 @@ def search_creative_rss(hours=24, session=None):
                 results.append({"source": "creative_rss", "source_tier": "editorial_curated",
                     "publisher": publisher, "title": title, "url": link, "content": clean[:1500],
                     "published_at": created.astimezone(timezone.utc).isoformat()})
-    return results
+    return results, warnings
 
 
 def search_devto(hours=24, session=None):
@@ -151,8 +163,9 @@ def search_mastodon(hours=24, session=None):
     for row in response.json():
         created = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
         if created >= cutoff:
+            clean = html.unescape(re.sub(r"<[^>]+>", " ", row.get("content", "")))
             results.append({"source": "mastodon", "source_tier": "social_first_party",
-                "title": row.get("content", "")[:120], "url": row["url"], "content": row.get("content", ""),
+                "title": clean[:120], "url": row["url"], "content": clean,
                 "published_at": row["created_at"], "likes": row.get("favourites_count", 0)})
     return results
 
@@ -163,15 +176,35 @@ def search_youtube(hours=24, session=None):
         return []
     session = session or requests.Session()
     published_after = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat(timespec="seconds").replace("+00:00", "Z")
-    results = []
+    results, warnings = [], []
     for query in ("three.js art", "threejs shader", "react three fiber creative"):
-        response = session.get("https://www.googleapis.com/youtube/v3/search", timeout=(5, 15),
-            params={"key": key, "part": "snippet", "q": query, "type": "video", "order": "date",
-                    "publishedAfter": published_after, "maxResults": 50})
-        response.raise_for_status()
+        try:
+            response = session.get("https://www.googleapis.com/youtube/v3/search", timeout=(5, 15),
+                params={"key": key, "part": "snippet", "q": query, "type": "video", "order": "date",
+                        "publishedAfter": published_after, "maxResults": 50})
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            warnings.append(f"{query}: {exc}")
+            continue
         for row in response.json().get("items", []):
             snippet, video_id = row["snippet"], row["id"]["videoId"]
             results.append({"source": "youtube", "source_tier": "video_creator", "title": snippet["title"],
                 "url": f"https://www.youtube.com/watch?v={video_id}", "content": snippet.get("description", ""),
-                "published_at": snippet["publishedAt"], "channel": snippet.get("channelTitle")})
-    return results
+                "published_at": snippet["publishedAt"], "channel": snippet.get("channelTitle"),
+                "thumbnail_url": snippet.get("thumbnails", {}).get("high", {}).get("url", "")})
+    by_id = {item["url"].rsplit("=", 1)[-1]: item for item in results}
+    if by_id:
+        try:
+            stats_response = session.get("https://www.googleapis.com/youtube/v3/videos", timeout=(5, 15),
+                params={"key": key, "part": "statistics,contentDetails", "id": ",".join(by_id)})
+            stats_response.raise_for_status()
+            stats = stats_response.json()
+            for row in stats.get("items", []):
+                item = by_id.get(row["id"])
+                if item:
+                    values = row.get("statistics", {})
+                    item.update(views=int(values.get("viewCount", 0)), likes=int(values.get("likeCount", 0)),
+                                duration=row.get("contentDetails", {}).get("duration"))
+        except (requests.RequestException, ValueError) as exc:
+            warnings.append(f"video statistics: {exc}")
+    return list(by_id.values()), warnings

@@ -1,4 +1,6 @@
 import argparse
+import hashlib
+from concurrent.futures import ThreadPoolExecutor, as_completed
 import json
 import os
 import sys
@@ -10,6 +12,7 @@ from community_collectors import (search_creative_rss, search_devto, search_gitl
                                   search_hackernews, search_mastodon, search_npm,
                                   search_reddit, search_youtube)
 from deduplicator import deduplicate_items
+from enricher import enrich_items
 from filters import filter_by_keywords, filter_recent
 from forum_collector import search_forum
 from github_collector import search_github
@@ -21,6 +24,27 @@ COLLECTORS = {"github": search_github, "threejs_forum": search_forum,
               "devto": search_devto, "reddit": search_reddit, "hackernews": search_hackernews,
               "mastodon": search_mastodon, "youtube": search_youtube, "bluesky": search_bluesky,
               "twitter": search_twitter, "discord": search_discord}
+
+
+def load_json(path, default):
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (FileNotFoundError, json.JSONDecodeError, OSError):
+        return default
+
+
+def atomic_json(path, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_suffix(path.suffix + ".tmp")
+    temporary.write_text(json.dumps(value, ensure_ascii=False, indent=2), encoding="utf-8")
+    temporary.replace(path)
+
+
+def analysis_cache_key(item):
+    payload = json.dumps({"id": item["id"], "model": os.getenv("OPENAI_MODEL", "gpt-5.6-luna"),
+                          "content": item.get("content"), "enriched": item.get("enriched_content")},
+                         sort_keys=True, ensure_ascii=False)
+    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def select_diverse(candidates, limit, per_source=2):
@@ -58,9 +82,14 @@ def collect(hours):
             continue
         try:
             print(f"[source] {name}: scanning...", file=sys.stderr, flush=True)
-            batch = collector(hours=hours)
+            result = collector(hours=hours)
+            batch, warnings = result if isinstance(result, tuple) else (result, [])
             items.extend(batch)
-            status[name] = {"ok": True, "count": len(batch)}
+            status[name] = {"ok": bool(batch) or not warnings, "count": len(batch)}
+            if warnings:
+                status[name]["warnings"] = warnings[:10]
+            if name == "bluesky" and warnings and not (os.getenv("BSKY_HANDLE") and os.getenv("BSKY_APP_PASSWORD")):
+                status[name]["hint"] = "public endpoint blocked; set free BSKY_HANDLE and BSKY_APP_PASSWORD"
             print(f"[source] {name}: {len(batch)} items", file=sys.stderr, flush=True)
         except (RequestException, ValueError, KeyError) as exc:
             status[name] = {"ok": False, "error": str(exc)[:240]}
@@ -74,28 +103,47 @@ def run(hours=24, minimum_score=8, max_cases=50, ai_limit=25, include_seen=False
     raw, status = collect(hours)
     candidates = deduplicate_items(filter_by_keywords(filter_recent(raw, hours), minimum_score))
     state_path = Path(output_dir) / "seen.json"
-    try:
-        seen = set(json.loads(state_path.read_text(encoding="utf-8")))
-    except (FileNotFoundError, json.JSONDecodeError):
-        seen = set()
+    seen = set(load_json(state_path, []))
     if not include_seen:
         candidates = [item for item in candidates if item["id"] not in seen]
     candidates.sort(key=lambda item: item.get("heuristic_score", 0), reverse=True)
     selected = select_diverse(candidates, max_cases)
+    evaluated_ids = {item["id"] for item in selected}
+    enrichment_path = Path(output_dir) / "enrichment-cache.json"
+    enrichment_cache = load_json(enrichment_path, {})
+    _, enrichment_cache = enrich_items(selected[:ai_limit], enrichment_cache)
+    atomic_json(enrichment_path, enrichment_cache)
+    cache_path = Path(output_dir) / "analysis-cache.json"
+    cache = load_json(cache_path, {})
+    pending = {}
     for index, item in enumerate(selected):
-        try:
-            item["analysis"] = analyze_item(item) if index < ai_limit else fallback_analysis(item)
-        except Exception as exc:
+        key = analysis_cache_key(item)
+        if index < ai_limit and key in cache:
+            item["analysis"] = cache[key]
+            item["analysis_cached"] = True
+        elif index < ai_limit and os.getenv("OPENAI_API_KEY"):
+            pending[index] = (item, key)
+        else:
             item["analysis"] = fallback_analysis(item)
-            item["analysis_error"] = str(exc)[:240]
+    if pending:
+        with ThreadPoolExecutor(max_workers=min(4, len(pending))) as pool:
+            futures = {pool.submit(analyze_item, item): (item, key) for item, key in pending.values()}
+            for future in as_completed(futures):
+                item, key = futures[future]
+                try:
+                    item["analysis"] = future.result()
+                    cache[key] = item["analysis"]
+                    atomic_json(cache_path, cache)
+                except Exception as exc:
+                    item["analysis"] = fallback_analysis(item)
+                    item["analysis_error"] = str(exc)[:240]
     selected = [item for item in selected if item["analysis"].get("relevant", True)]
     selected.sort(key=lambda item: (item["analysis"].get("recommendation_score", 0),
                                     item.get("heuristic_score", 0)), reverse=True)
-    md_path, json_path = write_reports(selected, output_dir)
-    state_path.parent.mkdir(parents=True, exist_ok=True)
-    state_path.write_text(json.dumps(sorted(seen | {item["id"] for item in selected}), indent=2), encoding="utf-8")
-    (Path(output_dir) / "last-run.json").write_text(json.dumps({"sources": status, "raw": len(raw),
-        "candidates": len(candidates), "published": len(selected)}, ensure_ascii=False, indent=2), encoding="utf-8")
+    md_path, json_path, daily_items = write_reports(selected, output_dir)
+    atomic_json(state_path, sorted(seen | evaluated_ids))
+    atomic_json(Path(output_dir) / "last-run.json", {"sources": status, "raw": len(raw),
+        "candidates": len(candidates), "published_this_run": len(selected), "daily_total": len(daily_items)})
     return md_path, json_path, status, len(raw), len(selected)
 
 

@@ -42,6 +42,16 @@ cp .env.example .env
 - `--minimum-score`：提高可减少噪声，降低可扩大召回。
 
 输出为 `output/cases-YYYY-MM-DD.md`、同名 JSON，以及包含各来源健康状态的 `output/last-run.json`。
+同一天重复运行不会覆盖旧结果，而是按链接去重后合并进当天日报；日期统一按新加坡时区生成。
+
+为了提高案例判断质量，进入 AI 阶段的候选会尽量读取 GitHub README、npm README 和 three.js Forum
+正文。抓取内容及 AI 结果分别缓存在 `output/enrichment-cache.json` 和
+`output/analysis-cache.json`，重复运行时不会无谓地重复请求。AI 请求并发执行，并设有超时和降级摘要，
+单个请求失败不会阻止日报生成。
+
+JSON 中的预筛分位于 `heuristic_score`，AI 推荐分位于
+`analysis.recommendation_score`。`last-run.json` 中的 `published_this_run` 是本轮新增数，
+`daily_total` 是当天合并后的总数；来源局部失败会记录在对应来源的 `warnings` 中。
 
 ## Daily scheduling (cron)
 
@@ -52,4 +62,4 @@ CRON_TZ=Asia/Singapore
 0 9 * * * cd /absolute/path/to/threejs-agent && ./venv/bin/python main.py >> output/cron.log 2>&1
 ```
 
-“每日扫描”与“去重推送”是两件事：所有来源每天都会重新查询最近窗口，但 `seen.json` 会阻止已经交付过的链接再次进入日报。
+“每日扫描”与“去重推送”是两件事：所有来源每天都会重新查询最近窗口，但 `seen.json` 会阻止已经评估过的链接再次进入日报。

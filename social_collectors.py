@@ -29,11 +29,15 @@ def search_discord(hours=24, session=None):
         return []
     session = session or requests.Session()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-    results = []
+    results, warnings = [], []
     for channel in [value.strip() for value in channels.split(",") if value.strip()]:
-        response = session.get(f"https://discord.com/api/v10/channels/{channel}/messages",
-                               headers={"Authorization": f"Bot {token}"}, params={"limit": 100}, timeout=(5, 15))
-        response.raise_for_status()
+        try:
+            response = session.get(f"https://discord.com/api/v10/channels/{channel}/messages",
+                                   headers={"Authorization": f"Bot {token}"}, params={"limit": 100}, timeout=(5, 15))
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            warnings.append(f"channel {channel}: {exc}")
+            continue
         for row in response.json():
             created = datetime.fromisoformat(row["timestamp"].replace("Z", "+00:00"))
             if created < cutoff or not row.get("content"):
@@ -43,13 +47,13 @@ def search_discord(hours=24, session=None):
                 "title": row["content"][:120], "content": row["content"],
                 "url": f"https://discord.com/channels/{guild}/{channel}/{row['id']}",
                 "published_at": row["timestamp"]})
-    return results
+    return results, warnings
 
 
 def search_bluesky(hours=24, session=None):
     session = session or requests.Session()
     cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
-    results = []
+    results, warnings = [], []
     headers = {"User-Agent": "threejs-good-cases/2.0 (+https://github.com/threejs)",
                "Accept": "application/json"}
     host = "https://public.api.bsky.app"
@@ -62,9 +66,13 @@ def search_bluesky(hours=24, session=None):
         headers["atproto-proxy"] = "did:web:api.bsky.app#bsky_appview"
         host = "https://bsky.social"
     for query in ("threejs", '"three.js"', '"react three fiber"'):
-        response = session.get(f"{host}/xrpc/app.bsky.feed.searchPosts",
-                               headers=headers, params={"q": query, "limit": 100, "sort": "latest"}, timeout=(5, 15))
-        response.raise_for_status()
+        try:
+            response = session.get(f"{host}/xrpc/app.bsky.feed.searchPosts",
+                                   headers=headers, params={"q": query, "limit": 100, "sort": "latest"}, timeout=(5, 15))
+            response.raise_for_status()
+        except requests.RequestException as exc:
+            warnings.append(f"{query}: {exc}")
+            continue
         for row in response.json().get("posts", []):
             record, created = row.get("record", {}), row.get("record", {}).get("createdAt", "")
             try:
@@ -73,7 +81,11 @@ def search_bluesky(hours=24, session=None):
             except ValueError:
                 continue
             handle, post_id, post_text = row.get("author", {}).get("handle", "unknown"), row.get("uri", "").rsplit("/", 1)[-1], record.get("text", "")
+            embed = row.get("embed", {}) or {}
+            external = embed.get("external", {}) or {}
             results.append({"source": "bluesky", "source_tier": "social_first_party", "title": post_text[:120],
                 "content": post_text, "url": f"https://bsky.app/profile/{handle}/post/{post_id}",
-                "published_at": created, "likes": row.get("likeCount", 0)})
-    return results
+                "published_at": created, "likes": row.get("likeCount", 0),
+                "has_images": bool(embed.get("images")), "external_link": external.get("uri", ""),
+                "enriched_content": " ".join(filter(None, (external.get("title"), external.get("description"))))})
+    return results, warnings
