@@ -52,6 +52,9 @@ class PipelineCoreTests(unittest.TestCase):
             _, json_path, merged = write_reports([second], directory)
             self.assertEqual({item["id"] for item in merged}, {"one", "two"})
             self.assertEqual(len(json.loads(Path(json_path).read_text())), 2)
+            dashboard = Path(directory, "index.html").read_text(encoding="utf-8")
+            self.assertIn("three.js Good Case Radar", dashboard)
+            self.assertNotIn("__CASE_DATA__", dashboard)
 
     def test_x_web_discovery_is_marked_indirect(self):
         recent = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")

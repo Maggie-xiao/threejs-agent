@@ -5,6 +5,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 REPORT_TZ = ZoneInfo("Asia/Singapore")
+WEB_TEMPLATE = Path(__file__).with_name("web") / "dashboard.html"
 
 
 def _atomic_write(path, content):
@@ -41,4 +42,12 @@ def write_reports(items, output_dir="output", merge_existing=True):
                   f"- 可借鉴价值：{analysis.get('reusable_value', '')}",
                   f"- 推荐分：{analysis.get('recommendation_score', 0)}/10 · 预筛分：{item.get('heuristic_score', 0)}", ""]
     _atomic_write(md_path, "\n".join(lines))
+    web_path = out / "index.html"
+    template = WEB_TEMPLATE.read_text(encoding="utf-8")
+    browser_items = []
+    for item in items:
+        browser_items.append({key: value for key, value in item.items()
+                              if key != "enriched_content"})
+    payload = json.dumps(browser_items, ensure_ascii=False).replace("</", "<\\/")
+    _atomic_write(web_path, template.replace("__CASE_DATA__", payload))
     return md_path, json_path, items

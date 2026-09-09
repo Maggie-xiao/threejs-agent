@@ -50,6 +50,10 @@ cp .env.example .env
 输出为 `output/cases-YYYY-MM-DD.md`、同名 JSON，以及包含各来源健康状态的 `output/last-run.json`。
 同一天重复运行不会覆盖旧结果，而是按链接去重后合并进当天日报；日期统一按新加坡时区生成。
 
+同时会生成 `output/index.html` 可视化仪表盘。直接双击即可打开，无需启动服务器；页面支持搜索、
+来源筛选、有无代码筛选、推荐分/预筛分/发布时间排序和案例详情查看。每次运行 `main.py` 后网页会
+随当天合并结果自动更新。
+
 为了提高案例判断质量，进入 AI 阶段的候选会尽量读取 GitHub README、npm README 和 three.js Forum
 正文。抓取内容及 AI 结果分别缓存在 `output/enrichment-cache.json` 和
 `output/analysis-cache.json`，重复运行时不会无谓地重复请求。AI 请求并发执行，并设有超时和降级摘要，
