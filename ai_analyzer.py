@@ -35,7 +35,8 @@ def analyze_item(item):
     source_data = {key: item.get(key) for key in
                    ("source", "source_tier", "title", "url", "content", "enriched_content",
                     "stars", "likes", "views", "language", "license", "topics", "demo_url",
-                    "thumbnail_url", "has_images", "external_link")}
+                    "thumbnail_url", "has_images", "external_link", "original_platform",
+                    "discovery_method", "indirect_link")}
     response = OpenAI(timeout=20.0, max_retries=1).responses.create(
         model=os.getenv("OPENAI_MODEL", "gpt-5.6-luna"), store=False,
         instructions=("你是 three.js / Creative Web / 3D Art 案例编辑。只根据输入证据评估，不得虚构。"

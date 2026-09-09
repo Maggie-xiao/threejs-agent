@@ -1,6 +1,7 @@
 import unittest
 import json
 import tempfile
+from unittest.mock import Mock
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
@@ -8,6 +9,7 @@ from deduplicator import deduplicate_items
 from filters import filter_by_keywords, filter_recent
 from main import select_diverse
 from report import write_reports
+from community_collectors import search_x_web
 
 
 class PipelineCoreTests(unittest.TestCase):
@@ -50,6 +52,20 @@ class PipelineCoreTests(unittest.TestCase):
             _, json_path, merged = write_reports([second], directory)
             self.assertEqual({item["id"] for item in merged}, {"one", "two"})
             self.assertEqual(len(json.loads(Path(json_path).read_text())), 2)
+
+    def test_x_web_discovery_is_marked_indirect(self):
+        recent = datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
+        xml = ("<rss><channel><item><title>three.js shader artwork - x.com</title>"
+               "<link>https://news.google.com/rss/articles/example</link>"
+               f"<pubDate>{recent}</pubDate></item></channel></rss>")
+        response = Mock(content=xml.encode())
+        response.raise_for_status.return_value = None
+        session = Mock()
+        session.get.return_value = response
+        items, warnings = search_x_web(hours=24, session=session)
+        self.assertEqual(warnings, [])
+        self.assertTrue(items[0]["indirect_link"])
+        self.assertEqual(items[0]["original_platform"], "x")
 
 
 if __name__ == "__main__":

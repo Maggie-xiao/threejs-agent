@@ -3,6 +3,8 @@ import os
 import html
 import re
 import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime
+from math import ceil
 from datetime import datetime, timedelta, timezone
 
 import requests
@@ -62,6 +64,12 @@ RSS_FEEDS = {
     "webdev": "https://web.dev/feed.xml",
 }
 
+X_DISCOVERY_QUERIES = (
+    'site:x.com (threejs OR "three.js") (shader OR webgpu OR webgl)',
+    'site:x.com (threejs OR "three.js") (interactive OR immersive OR generative)',
+    'site:x.com (threejs OR "three.js" OR "react three fiber") (art OR game OR 3D)',
+)
+
 
 def _text(node, *names):
     for name in names:
@@ -69,6 +77,44 @@ def _text(node, *names):
         if child is not None and child.text:
             return child.text.strip()
     return ""
+
+
+def search_x_web(hours=24, session=None):
+    """Discover public X posts through Google News RSS without X API credentials.
+
+    Results are indirect Google redirect URLs and intentionally use a distinct
+    source name so they are never mistaken for first-party X API data.
+    """
+    session = session or requests.Session()
+    cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
+    recent_days = max(1, ceil(hours / 24))
+    found, warnings = {}, []
+    for query in X_DISCOVERY_QUERIES:
+        try:
+            response = session.get("https://news.google.com/rss/search", timeout=(5, 15),
+                headers={"User-Agent": "threejs-good-cases/2.0"},
+                params={"q": f"{query} when:{recent_days}d", "hl": "en-US", "gl": "US", "ceid": "US:en"})
+            response.raise_for_status()
+            root = ET.fromstring(response.content)
+        except (requests.RequestException, ET.ParseError) as exc:
+            warnings.append(f"{query}: {exc}")
+            continue
+        for node in root.findall(".//item"):
+            title = _text(node, "title")
+            link = _text(node, "link")
+            published = _text(node, "pubDate")
+            try:
+                created = parsedate_to_datetime(published).astimezone(timezone.utc)
+            except (ValueError, TypeError):
+                continue
+            if created < cutoff or not link or not title.lower().endswith(" - x.com"):
+                continue
+            clean_title = re.sub(r"\s+-\s+x\.com\s*$", "", title, flags=re.IGNORECASE).strip()
+            found[link] = {"source": "x_search", "source_tier": "indirect_discovery",
+                "original_platform": "x", "discovery_method": "google_news_rss",
+                "title": clean_title[:300], "url": link, "content": clean_title,
+                "published_at": created.isoformat(), "indirect_link": True}
+    return list(found.values()), warnings
 
 
 def search_creative_rss(hours=24, session=None):
@@ -96,7 +142,6 @@ def search_creative_rss(hours=24, session=None):
                 link_node = node.find("{http://www.w3.org/2005/Atom}link")
                 link = link_node.get("href", "") if link_node is not None else ""
             published = _text(node, "pubDate", "{http://www.w3.org/2005/Atom}published", "{http://www.w3.org/2005/Atom}updated")
-            from email.utils import parsedate_to_datetime
             try:
                 created = parsedate_to_datetime(published) if "," in published else datetime.fromisoformat(published.replace("Z", "+00:00"))
             except (ValueError, TypeError):

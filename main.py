@@ -10,7 +10,7 @@ from requests import RequestException
 from ai_analyzer import analyze_item, fallback_analysis
 from community_collectors import (search_creative_rss, search_devto, search_gitlab,
                                   search_hackernews, search_mastodon, search_npm,
-                                  search_reddit, search_youtube)
+                                  search_reddit, search_x_web, search_youtube)
 from deduplicator import deduplicate_items
 from enricher import enrich_items
 from filters import filter_by_keywords, filter_recent
@@ -22,7 +22,8 @@ from social_collectors import search_bluesky, search_discord, search_twitter
 COLLECTORS = {"github": search_github, "threejs_forum": search_forum,
               "gitlab": search_gitlab, "npm": search_npm, "creative_rss": search_creative_rss,
               "devto": search_devto, "reddit": search_reddit, "hackernews": search_hackernews,
-              "mastodon": search_mastodon, "youtube": search_youtube, "bluesky": search_bluesky,
+              "mastodon": search_mastodon, "youtube": search_youtube, "x_search": search_x_web,
+              "bluesky": search_bluesky,
               "twitter": search_twitter, "discord": search_discord}
 
 

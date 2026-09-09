@@ -12,6 +12,7 @@
 | three.js Forum | 是 | 无 | 专业社区的一手作品与讨论 |
 | Bluesky | 是 | 匿名；403 时配置免费 `BSKY_HANDLE`、`BSKY_APP_PASSWORD` | 创作者发布与展示 |
 | X / Twitter | 否 | `X_BEARER_TOKEN` | 高频创作者动态 |
+| X 间接搜索 | 是 | 无 | Google News RSS 发现部分公开 X 帖子；覆盖不完整 |
 | Discord | 否 | `DISCORD_BOT_TOKEN`、`DISCORD_CHANNEL_IDS` | 指定社区频道内容 |
 | DEV Community | 是 | 无 | 教程、作品拆解与代码文章 |
 | Reddit | 是（尽力而为） | 无 | 社区作品、讨论与外链 |
@@ -21,6 +22,11 @@
 | YouTube | 否 | `YOUTUBE_API_KEY` | 视频展示、制作过程与教程 |
 
 Twitter、Discord 和 YouTube 使用官方 API。Discord Bot 必须已加入目标服务器并具有目标频道的读取权限；频道 ID 用逗号分隔。没有配置的来源会被跳过，并记录在 `output/last-run.json`。
+
+未配置 `X_BEARER_TOKEN` 时，`x_search` 仍会通过免费的公开搜索索引补充一部分 X 内容。
+这类结果会标记为 `source=x_search`、`source_tier=indirect_discovery` 和
+`indirect_link=true`，链接可能先经过 Google 跳转；它不等同于 X 官方 API，不能保证完整覆盖、
+实时性或互动数据。配置官方 Token 后，两种来源可以同时运行并由全局去重处理。
 
 Bluesky 默认使用匿名公开 AppView。如果当前网络返回 403，可在 Bluesky 的 Settings → Privacy and security → App passwords 创建专用密码，将账号 handle 和专用密码写入 `.env`。不要使用账号主密码。
 
