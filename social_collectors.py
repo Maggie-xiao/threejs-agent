@@ -87,5 +87,6 @@ def search_bluesky(hours=24, session=None):
                 "content": post_text, "url": f"https://bsky.app/profile/{handle}/post/{post_id}",
                 "published_at": created, "likes": row.get("likeCount", 0),
                 "has_images": bool(embed.get("images")), "external_link": external.get("uri", ""),
+                "image_urls": [image['fullsize'] for image in embed.get('images', []) if image.get('fullsize')][:2],
                 "enriched_content": " ".join(filter(None, (external.get("title"), external.get("description"))))})
     return results, warnings

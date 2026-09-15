@@ -1,0 +1,7 @@
+{
+  "version": "2026-09-13-art-v2",
+  "threshold": 70,
+  "weights": {"fit": 0.4, "finish": 0.3, "takeaway": 0.3},
+  "max_featured": 20,
+  "visual_calls_enabled": false
+}

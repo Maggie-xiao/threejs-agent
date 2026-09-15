@@ -3,6 +3,7 @@ from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 from zoneinfo import ZoneInfo
+from art_filter import rank_daily
 
 REPORT_TZ = ZoneInfo("Asia/Singapore")
 WEB_TEMPLATE = Path(__file__).with_name("web") / "dashboard.html"
@@ -29,14 +30,18 @@ def write_reports(items, output_dir="output", merge_existing=True):
         items = list(merged.values())
         items.sort(key=lambda item: (item.get("analysis", {}).get("recommendation_score", 0),
                                     item.get("heuristic_score", 0)), reverse=True)
+    items = rank_daily(items)
     _atomic_write(json_path, json.dumps(items, ensure_ascii=False, indent=2))
     sources = Counter(item.get("source", "unknown") for item in items)
     lines = [f"# three.js Good Cases · {stamp}", "",
-             f"> 共 {len(items)} 条高潜案例；来源：" + "、".join(f"{k} {v}" for k, v in sources.items()), ""]
+             f"> 美术精选 {sum(x['selection_status']=='美术精选' for x in items)} 条；来源：" + "、".join(f"{k} {v}" for k, v in sources.items()), ""]
+    if not any(x['selection_status']=='美术精选' for x in items):
+        lines += ['本期暂无符合标准的新案例。', '']
     for index, item in enumerate(items, 1):
         analysis = item.get("analysis", {})
         code = "有代码" if analysis.get("has_code", item.get("has_code")) else "无代码/待确认"
         lines += [f"## {index}. [{item.get('title', 'Untitled')}]({item.get('url', '')})", "",
+                  f"- 分类：{item['selection_status']} · 美术分：{item.get('art_total')} · 原因：{'；'.join(item['decision_reasons'])}",
                   f"- 来源：{item.get('source')} · {item.get('source_tier', 'unknown')} · {code}",
                   f"- 核心亮点：{analysis.get('highlight', '')}",
                   f"- 可借鉴价值：{analysis.get('reusable_value', '')}",

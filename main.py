@@ -8,6 +8,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 from requests import RequestException
 from ai_analyzer import analyze_item, fallback_analysis
+from art_filter import VERSION, rank_daily
 from community_collectors import (search_creative_rss, search_devto, search_gitlab,
                                   search_hackernews, search_mastodon, search_npm,
                                   search_reddit, search_x_web, search_youtube)
@@ -43,6 +44,7 @@ def atomic_json(path, value):
 
 def analysis_cache_key(item):
     payload = json.dumps({"id": item["id"], "model": os.getenv("OPENAI_MODEL", "gpt-5.6-luna"),
+                          "version": VERSION, "images": item.get('image_urls', []),
                           "content": item.get("content"), "enriched": item.get("enriched_content")},
                          sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
@@ -100,7 +102,9 @@ def collect(hours):
     return items, status
 
 
-def run(hours=24, minimum_score=8, max_cases=50, ai_limit=25, include_seen=False, output_dir="output"):
+def run(hours=24, minimum_score=8, max_cases=20, ai_limit=25, include_seen=False, output_dir="output"):
+    load_dotenv(Path(__file__).with_name('.env'))
+    ai_limit = min(25, max(0, ai_limit))
     raw, status = collect(hours)
     candidates = deduplicate_items(filter_by_keywords(filter_recent(raw, hours), minimum_score))
     state_path = Path(output_dir) / "seen.json"
@@ -108,7 +112,9 @@ def run(hours=24, minimum_score=8, max_cases=50, ai_limit=25, include_seen=False
     if not include_seen:
         candidates = [item for item in candidates if item["id"] not in seen]
     candidates.sort(key=lambda item: item.get("heuristic_score", 0), reverse=True)
-    selected = select_diverse(candidates, max_cases)
+    candidates.sort(key=lambda x: any(w in (x.get('content','')+' '+x.get('title','')).lower()
+                    for w in ('world', 'game', 'stylized', 'low-poly', 'voxel', 'forest', 'explore')), reverse=True)
+    selected = select_diverse(candidates, max(max_cases, ai_limit))
     evaluated_ids = {item["id"] for item in selected}
     enrichment_path = Path(output_dir) / "enrichment-cache.json"
     enrichment_cache = load_json(enrichment_path, {})
@@ -118,10 +124,13 @@ def run(hours=24, minimum_score=8, max_cases=50, ai_limit=25, include_seen=False
     cache = load_json(cache_path, {})
     pending = {}
     for index, item in enumerate(selected):
+        if not item.get('image_urls'):
+            item['image_urls'] = [item['thumbnail_url']] if item.get('thumbnail_url') else []
         key = analysis_cache_key(item)
-        if index < ai_limit and key in cache:
+        if index < ai_limit and key in cache and item.get('image_urls'):
             item["analysis"] = cache[key]
             item["analysis_cached"] = True
+            item['visual_evidence'] = [{'url': u, 'status': 'checked', 'scope': '缓存静态图片判断'} for u in item['image_urls'][:2]]
         elif index < ai_limit and os.getenv("OPENAI_API_KEY"):
             pending[index] = (item, key)
         else:
@@ -133,12 +142,13 @@ def run(hours=24, minimum_score=8, max_cases=50, ai_limit=25, include_seen=False
                 item, key = futures[future]
                 try:
                     item["analysis"] = future.result()
-                    cache[key] = item["analysis"]
-                    atomic_json(cache_path, cache)
+                    if item.get('visual_evidence'):
+                        cache[key] = item["analysis"]
+                        atomic_json(cache_path, cache)
                 except Exception as exc:
                     item["analysis"] = fallback_analysis(item)
                     item["analysis_error"] = str(exc)[:240]
-    selected = [item for item in selected if item["analysis"].get("relevant", True)]
+    selected = rank_daily(selected, max_cases)
     selected.sort(key=lambda item: (item["analysis"].get("recommendation_score", 0),
                                     item.get("heuristic_score", 0)), reverse=True)
     md_path, json_path, daily_items = write_reports(selected, output_dir)
@@ -153,7 +163,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Daily three.js good-case radar")
     parser.add_argument("--hours", type=int, default=24)
     parser.add_argument("--minimum-score", type=int, default=8)
-    parser.add_argument("--max-cases", type=int, default=50)
+    parser.add_argument("--max-cases", type=int, default=20)
     parser.add_argument("--ai-limit", type=int, default=25)
     parser.add_argument("--include-seen", action="store_true")
     parser.add_argument("--output-dir", default="output")
